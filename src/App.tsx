@@ -18,6 +18,7 @@ import { RemoteAgentSettingsPanel } from "@/components/RemoteAgentSettingsPanel"
 import { NewBotDialog } from "@/components/NewBotDialog";
 import { PrivateAppsPanel as PluginsPanel } from "@/components/PrivateAppsPanel";
 import { TriggersPanel } from "@/components/TriggersPanel";
+import { ProactivityPanel } from "@/components/ProactivityPanel";
 import { ComputerPanel } from "@/components/ComputerPanel";
 import { RemoteDesktopPanel } from "@/components/remote-desktop-panel";
 import { InspectorPanel } from "@/components/InspectorPanel";
@@ -45,6 +46,13 @@ import { phonePairingSettingsAction, takePhonePairingRequest } from "@/lib/phone
 
 function Shell({ viewer }: { viewer: WelcomeViewer | null }) {
   const { state, dispatch } = useStore();
+  const [proactivityOpen, setProactivityOpen] = useState(false);
+  const closeProactivity = useCallback(() => setProactivityOpen(false), []);
+  useEffect(() => {
+    const open = () => setProactivityOpen(true);
+    window.addEventListener("dotesperia:proactivity", open);
+    return () => window.removeEventListener("dotesperia:proactivity", open);
+  }, []);
   const { capabilities } = useDesktopCapabilities();
   const unreadCount =
     state.bots.filter((bot) => !bot.hidden && botShowsUnread(bot)).length +
@@ -368,6 +376,7 @@ function Shell({ viewer }: { viewer: WelcomeViewer | null }) {
       <CloudSetup viewer={viewer} />
       {state.pluginsOpen && <PluginsPanel />}
       {state.triggersOpen && <TriggersPanel />}
+      {proactivityOpen && <ProactivityPanel onClose={closeProactivity} />}
       {state.newBotOpen && <NewBotDialog />}
       {state.shortcutsOpen && (
         <KeyboardShortcutsModal

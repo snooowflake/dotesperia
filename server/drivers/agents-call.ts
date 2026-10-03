@@ -432,6 +432,14 @@ export async function callTool(name: string, args: Json, context: ToolCallContex
   const { botId: BOT_ID, threadId: THREAD_ID, depth: DEPTH, externalRuntime: EXTERNAL_RUNTIME, coordinating: COORDINATING, turn } = context;
   const { delegationTaskIdsThisTurn } = turn;
   const { api, apiResponse } = context.client;
+  if (name === "list_objectives") return { text: JSON.stringify(await api("/api/internal/objectives")) };
+  if (name === "objective_checkpoint") {
+    const result = await api("/api/internal/objective-checkpoint", { method: "POST", body: JSON.stringify({
+      objectiveId: args.objective_id, action: args.action, summary: args.summary,
+      ...(args.delay_minutes === undefined ? {} : { delayMinutes: args.delay_minutes }),
+    }) });
+    return { text: JSON.stringify(result) };
+  }
   if (name === "vm_exec") {
     const { ok, body } = await apiResponse("/api/internal/vm-exec", {
       method: "POST",

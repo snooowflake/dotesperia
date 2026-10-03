@@ -19,6 +19,7 @@ relancées. Les mécanismes propriétaires des Dots OpenAI ne sont pas reproduit
 
 * [Architecture, frontières et étapes restantes](docs/dotesperia/architecture.md)
 * [Installation indépendante](docs/dotesperia/deployment.md)
+* [Objectifs, événements et proactivité](docs/dotesperia/proactivity.md)
 * [Vérification par fixtures isolées](docs/verification/README.md)
 
 Le navigateur doit utiliser le relais de l’opérateur. Les services MCP locaux

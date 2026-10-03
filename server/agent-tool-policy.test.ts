@@ -15,6 +15,7 @@ describe("built-in agent tool read policy", () => {
       "session_read",
       "tool_result_read",
       "list_routines",
+      "list_objectives",
       "skills_list",
     ]);
     for (const name of READ_ONLY_AGENT_TOOL_NAMES) {
@@ -33,6 +34,7 @@ describe("built-in agent tool read policy", () => {
     "create_bot", "request_credential", "memory_update", "propose_routine",
     "propose_routine_action", "propose_profile", "skill_manage",
     "propose_team_setup", "propose_bot_deletion",
+    "objective_checkpoint",
     "list_secrets", "read_credentials", "list_bots_and_delete", "unknown", "",
     "mcp__agents__list_bots", "agents.list_bots", "LIST_BOTS", " list_bots",
   ])("does not infer read access for %s", (name) => {

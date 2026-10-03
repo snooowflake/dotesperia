@@ -12,6 +12,7 @@ test -x "$base/node-v24.21.0-linux-x64/bin/node"
 test -x "$base/tooling/node_modules/.bin/codex"
 if ! id dotesperia >/dev/null 2>&1; then useradd --create-home --shell /bin/bash dotesperia; fi
 if ! id dotesperia-net >/dev/null 2>&1; then useradd --system --no-create-home --home-dir /nonexistent --shell /usr/sbin/nologin dotesperia-net; fi
+install -d -o "$operator" -g dotesperia-net -m 2750 "$base/tls"
 test "$(getent passwd dotesperia | cut -d: -f6)" = /home/dotesperia
 chmod 700 /home/dotesperia
 install -d -o dotesperia -g dotesperia -m 700 /home/dotesperia/workspace /home/dotesperia/.dotesperia

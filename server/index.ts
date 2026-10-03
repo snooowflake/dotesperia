@@ -4,6 +4,8 @@
 // Privacy restrictions load before configuration or provider processes.
 import { BOOT_CLOUD_SECRETS, PRIVACY_POLICY } from "./privacy-boot.ts";
 import { blockedPrivateRoute } from "./privacy-policy.ts";
+import { ProactivityManager } from "./proactivity.ts";
+import type { ObjectiveInput, ObjectiveCheckpoint } from "../shared/proactivity.ts";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { existsSync, readFileSync, realpathSync, rmSync, mkdirSync } from "node:fs";
@@ -2401,6 +2403,7 @@ function agentsIntegration(
       OMB_OWN_THREAD_CREATION: ownThreadCreation ? "1" : "0",
       OMB_SKILL_AUTHORING_ENABLED: skillAuthoring ? "1" : "0",
       OMB_MEMORY_ENABLED: store.bot(botId)?.memoryEnabled === false ? "0" : "1",
+      OMB_PROACTIVITY_ENABLED: "1",
       // The shared-computer tools are advertised only while the workspace
       // gate is on; the routes behind them refuse regardless.
       OMB_SHARED_COMPUTERS_ENABLED: lendingEnabled() ? "1" : "0",
@@ -11097,6 +11100,19 @@ routines = new RoutineManager({
     notify(buildNotification("routine-deferred", notificationBot, routineSourceThread(run) ?? bot.threadId, detail));
   },
 });
+const proactivity = new ProactivityManager({
+  file: join(DATA_DIR, "objectives.json"),
+  workspace: (botId) => store.bot(botId)?.cwd ?? workspaceDir(botId),
+  botExists: (botId) => Boolean(store.bot(botId) && !store.bot(botId)!.hidden),
+  enqueue: (objective, deliveryId, prompt) => routines!.enqueueWebhook({
+    webhookId: `objective:${objective.id}`, webhookName: objective.name, botId: objective.botId,
+    runOn: "maus", deliveryId, prompt, receivedAt: Date.now(),
+  }),
+  receipt: (id, deliveryId) => routines!.webhookRunReceipt(`objective:${id}`, deliveryId),
+  run: (id) => routines!.listRuns().find(run => run.id === id),
+  cancel: (id) => routines!.cancelRun(id),
+});
+
 // A Cloud home is personal (server/cloud-owner.ts): every stored session
 // without admin scope is revoked and what it opened or wrote is nobody's;
 // once (and after a restore) the earlier keys are settled. Before anything
@@ -15504,8 +15520,8 @@ const workspaceBackupAccess = {
       teamComputers.list().every(computer => !teamComputerInUse(computer)) &&
       store.bots.every((bot) => !botHasActiveTurn(bot.id) && !routines?.activeRunForBot(bot.id) && !botComputerControlSnapshot(bot.id).held) &&
       store.groups.every((group) => !groupIsWorking(group)),
-    pause: () => { routines?.stop(); calendarCalls?.stop(); watchdog.stop(); memoryUpkeep.pause(); },
-    resume: () => { routines?.start(); calendarCalls?.start(); watchdog.start(); memoryUpkeep.resume(); },
+    pause: () => { proactivity.stop(); routines?.stop(); calendarCalls?.stop(); watchdog.stop(); memoryUpkeep.pause(); },
+    resume: () => { routines?.start(); proactivity.start(); calendarCalls?.start(); watchdog.start(); memoryUpkeep.resume(); },
     flush: async () => {
       await Promise.all([flushAllProfileHistory(), flushAllMemoryJournals(), flushUsageLedger(DATA_DIR), flushDecisionLog(DATA_DIR), flushAdminActivity(DATA_DIR)]);
       // With writers gated and work idle, release our WAL connection for the
@@ -15926,6 +15942,21 @@ const handleRequest = async (req: IncomingMessage, res: ServerResponse) => {
       onJsonBody(res, (body) => memberBody(body, visible));
     }
     beginAdminAudit(req, res, method, path, auth);
+
+    // Responsibilities are owner-authored. These routes require admin scope;
+    // agent calls use their separate active-turn capability below.
+    if (path === "/api/proactivity" && method === "GET") return json(res, 200, { objectives: proactivity.list() });
+    if (path === "/api/proactivity" && method === "POST") {
+      const objective = proactivity.create(await readBody(req) as ObjectiveInput);
+      return json(res, 201, { objective });
+    }
+    const objectiveAction = path.match(/^\/api\/proactivity\/([\w-]+)\/(pause|resume|run|complete|events)$/);
+    if (objectiveAction && method === "POST") {
+      const [, id, action] = objectiveAction;
+      if (action === "events") return json(res, 202, proactivity.event(id, await readBody(req) as { id: string; name: string; context?: string }));
+      const objective = await proactivity.action(id, action as "pause" | "resume" | "run" | "complete");
+      return json(res, 200, { objective });
+    }
 
     if (method === "POST" && path === "/api/workspace-backup/restore" && teamComputers.list().some(computer => computer.section !== null)) {
       return json(res, 409, { error: "Unassign team computers before restoring a workspace; restored team names must not gain access to existing desktops" });
@@ -16663,6 +16694,14 @@ const handleRequest = async (req: IncomingMessage, res: ServerResponse) => {
           });
         }
         return json(res, 200, { rooms: rooms.slice(0, 50), unpostable: unpostable.slice(0, 50) });
+      }
+      if (method === "GET" && path === "/api/internal/objectives") {
+        return json(res, 200, { now: new Date().toISOString(), objectives: proactivity.list(internalSender.id) });
+      }
+      if (method === "POST" && path === "/api/internal/objective-checkpoint") {
+        const body = await readInternalBody();
+        requireActiveInternalCapability();
+        return json(res, 200, { objective: proactivity.checkpoint(internalSender.id, internalCapability.threadId, body as unknown as ObjectiveCheckpoint) });
       }
       if (method === "GET" && path === "/api/internal/routines") {
         const from = internalSender;
@@ -25233,6 +25272,7 @@ server.listen(PORT, "127.0.0.1", () => {
   // ordinary chat. Start only once every registry is initialized and the
   // endpoint is listening; earlier dispatch can hit uninitialized bindings.
   routines!.start();
+  proactivity.start();
   memoryUpkeep.start();
   const leftover = pendingThreads();
   if (leftover.length) console.log(`delegations: ${leftover.length} thread(s) with queued handoffs from a previous run — draining`);
@@ -25284,6 +25324,7 @@ const gracefulShutdown = createGracefulShutdown({
       for (const idle of localVmIdles.values()) idle.cancel();
       vps.closeAllVpsDesktopTunnels();
       watchdog.stop();
+      proactivity.stop();
       routines?.stop();
       calendarCalls?.stop();
       memoryUpkeep.stop();

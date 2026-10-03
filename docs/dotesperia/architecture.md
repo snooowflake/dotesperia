@@ -57,6 +57,12 @@ automatique sur l’hyperviseur. Le PC n’est qu’un client de l’interface.
 Un déclencheur lance un travail ; un agent inactif ne consomme pas le modèle
 en boucle. Les premiers travaux planifiés restent soumis aux approbations.
 
+Le suivi [Objectifs et proactivité](proactivity.md) ajoute les responsabilités
+persistantes et leurs réveils au-dessus de cette même file. Il attend une
+échéance, un changement dans le workspace autorisé ou un événement privé.
+Le bot enregistre un résultat et une suite explicite ; les limites quotidiennes
+et les cas demandant une décision sont visibles dans l'interface.
+
 ## Hermes reste indépendant
 
 Aucun fichier, plugin, profil, service ou identifiant de Hermes n’est utilisé
