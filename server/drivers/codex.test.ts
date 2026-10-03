@@ -191,6 +191,19 @@ describe("CodexDriver turns (fake app-server)", () => {
     }
   });
 
+  it.each([null, undefined, []])("accepts unset native shell exclusions (%s) while shielding MCP credentials", async (exclude) => {
+    const dump = join(scratch, "unset-shell-policy.json"); process.env.FAKE_CODEX_DUMP = dump;
+    await create({ environment: { HOME: scratch, CODEX_HOME: join(scratch, ".codex"),
+      FAKE_CODEX_MCP_OVERRIDES: "1", FAKE_CODEX_SHELL_ENVIRONMENT_POLICY: JSON.stringify({ exclude }) } });
+    const { turnId } = await instance.adapter.sendTurn({ threadId: "unset-exclusions", text: "Fixture",
+      toolScope: { allow: ["native:*"] } });
+    const completed = await recorder.until(event => event.type === "turn.completed" && event.turnId === turnId);
+    expect(completed).toMatchObject({ ok: true });
+    const seen = JSON.parse(readFileSync(dump, "utf8"));
+    expect(seen.calls.find((call: { method: string }) => call.method === "thread/start")
+      .params.config["shell_environment_policy.exclude"]).toEqual(["OMB_GATE_CONFIG_*"]);
+  });
+
   it("refuses a scoped prompt when inherited shell snapshots cannot be disabled", async () => {
     const dump = join(scratch, "unsafe-shell-snapshot.json"); process.env.FAKE_CODEX_DUMP = dump;
     await create({ environment: { HOME: scratch, CODEX_HOME: join(scratch, ".codex"),
@@ -206,7 +219,7 @@ describe("CodexDriver turns (fake app-server)", () => {
     expect(seen.calls.some((call: { method: string }) => call.method === "turn/start")).toBe(false);
   });
 
-  it.each([null, false, [], { exclude: null }, { exclude: ["SAFE_*", 42] }])("refuses a scoped prompt with a malformed shell policy %j", async (policy) => {
+  it.each([null, false, [], { exclude: "SECRET_*" }, { exclude: ["SAFE_*", 42] }])("refuses a scoped prompt with a malformed shell policy %j", async (policy) => {
     const dump = join(scratch, "invalid-shell-policy.json"); process.env.FAKE_CODEX_DUMP = dump;
     await create({ environment: { HOME: scratch, CODEX_HOME: join(scratch, ".codex"),
       FAKE_CODEX_MCP_OVERRIDES: "1", FAKE_CODEX_SHELL_ENVIRONMENT_POLICY: JSON.stringify(policy) } });

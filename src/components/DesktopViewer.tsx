@@ -51,7 +51,7 @@ export function DesktopViewer() {
     setConnection("connecting");
     const connect = async () => {
       try {
-        if (!target || !/^(local\/(shared|bot-[a-f0-9]{64}|pool-\d+)|vps\/[\w-]+)$/.test(target)) return setConnection("invalid");
+        if (!target || !/^(private\/audit|local\/(shared|bot-[a-f0-9]{64}|pool-\d+)|vps\/[\w-]+)$/.test(target)) return setConnection("invalid");
         const signal = AbortSignal.any([controller.signal, AbortSignal.timeout(30_000)]);
         if (target.startsWith("vps/")) {
           const query = threadId ? `?${new URLSearchParams({ threadId })}` : "";

@@ -1,0 +1,34 @@
+[Unit]
+Description=Dotesperia isolated private desktop
+Requires=dotesperia-desktop-policy.service
+After=network-online.target dotesperia-desktop-policy.service
+
+[Service]
+User=dotesperia-desktop
+Group=dotesperia-desktop
+EnvironmentFile=/opt/dotesperia/desktop/runtime.env
+WorkingDirectory=/home/dotesperia-desktop
+ExecStart=/usr/bin/dbus-run-session -- /bin/sh /opt/dotesperia/repo/deploy/dotesperia/start-desktop.sh
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=10
+UMask=0077
+RuntimeDirectory=dotesperia-desktop
+RuntimeDirectoryMode=0700
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=tmpfs
+BindPaths=/home/dotesperia-desktop
+ReadWritePaths=/home/dotesperia-desktop
+InaccessiblePaths=-/opt/esperiashield-iphone -/run/dbus/system_bus_socket -/run/systemd/private
+CapabilityBoundingSet=
+RestrictSUIDSGID=true
+RestrictRealtime=true
+ProtectProc=invisible
+MemoryMax=2G
+CPUQuota=150%
+TasksMax=256
+
+[Install]
+WantedBy=multi-user.target

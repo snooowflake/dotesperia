@@ -1205,6 +1205,7 @@ export function syncCredentialEnv(patch: Partial<Omit<AppConfig, "threads" | "ne
  * secret receives it through instanceConfigs() narrowing, and to every other
  * child these are someone else's keys riding along in `...process.env`. */
 export const WORKSPACE_CREDENTIAL_ENV = [
+  "DOTESPERIA_DESKTOP_TOKEN",
   "XAI_API_KEY",
   "MISTRAL_API_KEY",
   "CEREBRAS_API_KEY",

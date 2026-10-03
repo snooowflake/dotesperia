@@ -40,7 +40,7 @@
     "dev:desktop": "node electron/privacy-build.mjs",
     "build": "tsc -b && tsc -p tsconfig.server.json && vite build",
     "typecheck": "tsc -b && tsc -p tsconfig.server.json",
-    "test": "vitest run && pnpm broker:test && pnpm test:electron && pnpm test:packaged-server",
+    "test": "pnpm privacy:test && pnpm test:private-desktop",
     "test:electron": "node --test \"electron/*.node-test.mjs\"",
     "bench:observation": "node --experimental-strip-types scripts/bench-observation.ts",
     "bench:persistence": "node --experimental-strip-types scripts/bench-persistence.ts",
@@ -63,7 +63,7 @@
     "build:cua:linux": "node scripts/prepare-cua-linux.mjs",
     "build:cua:linux:offline": "node scripts/prepare-cua-linux.mjs --offline",
     "build:updater": "node electron/privacy-build.mjs",
-    "package:prepare": "pnpm build && pnpm build:server && pnpm build:companion && pnpm build:updater && pnpm build:android-tools && pnpm build:cloudflared && pnpm build:browser",
+    "package:prepare": "node electron/privacy-build.mjs",
     "package:mac": "pnpm package:prepare && pnpm build:speech && pnpm build:cua && electron-builder --mac --publish never",
     "package:win": "pnpm package:prepare && pnpm build:cua:win && electron-builder --win --publish never",
     "package:linux": "pnpm package:prepare && pnpm build:cua:linux && electron-builder --linux --x64 --publish never",
@@ -75,16 +75,9 @@
     "package:linux:dir": "pnpm package:prepare && pnpm build:cua:linux && electron-builder --linux dir --x64 --publish never",
     "package": "pnpm package:mac",
     "test:packaged-server": "pnpm build:server && node scripts/smoke-packaged-server.mjs",
-    "broker:types": "wrangler types --config cloudflare/composio-broker/wrangler.jsonc cloudflare/composio-broker/worker-configuration.d.ts",
-    "broker:check": "pnpm broker:types && tsc -p cloudflare/composio-broker/tsconfig.json",
-    "broker:test": "vitest run --config cloudflare/composio-broker/vitest.config.ts",
-    "broker:deploy": "node electron/privacy-build.mjs",
-    "control-plane:types": "pnpm --filter @openmausbot/control-plane types",
-    "control-plane:check": "pnpm --filter @openmausbot/control-plane check",
-    "control-plane:test": "pnpm --filter @openmausbot/control-plane test",
-    "control-plane:dry-run": "pnpm --filter @openmausbot/control-plane dry-run",
-    "privacy:test": "vitest run src/lib/analytics.test.ts server/privacy-policy.test.ts server/privacy.e2e.test.ts server/privacy-egress-proxy.test.ts",
-    "start:private": "node --experimental-strip-types server/index.ts"
+    "privacy:test": "vitest run src/lib/analytics.test.ts server/privacy-policy.test.ts server/privacy.e2e.test.ts server/privacy-egress-proxy.test.ts server/vendor-removal.test.ts",
+    "start:private": "node --experimental-strip-types server/index.ts",
+    "test:private-desktop": "vitest run server/private-desktop.test.ts server/private-desktop.e2e.test.ts server/routes/desktop-viewer.test.ts server/request-auth.test.ts server/mcp-registry.test.ts server/mcp-probe.test.ts server/mcp-gate.test.ts server/drivers/codex-text.test.ts server/codex-memory.e2e.test.ts server/proactivity.test.ts"
   },
   "dependencies": {
     "@clack/prompts": "1.7.0",
@@ -133,7 +126,6 @@
     "typescript": "^5.8.3",
     "vite": "^7.1.0",
     "vitest": "^4.1.10",
-    "wrangler": "4.123.0",
     "ws": "8.22.0"
   }
 }

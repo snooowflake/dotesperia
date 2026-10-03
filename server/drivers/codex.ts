@@ -1594,7 +1594,9 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
             throw new Error("Codex could not confirm its shell environment policy. No prompt was sent.");
           }
           const policy = (rawPolicy ?? {}) as Record<string, unknown>;
-          const excluded = policy.exclude === undefined ? [] : policy.exclude;
+          // Native config/read serializes an unset optional exclusion list as
+          // null. Preserve explicit lists and still reject malformed values.
+          const excluded = policy.exclude == null ? [] : policy.exclude;
           if (!Array.isArray(excluded) || excluded.some(name => typeof name !== "string")) {
             throw new Error("Codex could not confirm its shell environment exclusions. No prompt was sent.");
           }

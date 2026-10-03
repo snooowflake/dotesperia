@@ -1,0 +1,17 @@
+# Private desktop on the audit VM
+
+The web interface opens the desktop under **Applications privées → Ouvrir le bureau**. This is an X11 desktop on the audit VM, available while the user's Windows PC is off. The hypervisor and VM must remain on.
+
+The desktop runs as `dotesperia-desktop`, the application as `dotesperia`, and source/deployment files belong to `mono`. The desktop cannot read the application user's home or model login. No Hermes files, credentials, services or connectors are mounted. The desktop has its own workspace `/home/dotesperia-desktop/workspace`; application agents retain `/home/dotesperia/workspace`.
+
+The pinned upstream Cua Driver supplies native screenshots and input through MCP. Telemetry is disabled before starting it. Administrative, updater and recording tools are excluded. A separate UID firewall rejects direct network traffic; allowed model destinations use the existing private proxy. Public web browsing and additional remote MCP destinations need an explicit operator policy change.
+
+The app replaces the broker credential with a capability scoped to the active bot turn. It rechecks that capability before and after forwarding an action. Discovery alone does not claim the desktop. The first action holds it until the turn ends or is interrupted; another turn receives a conflict and may continue other work. The existing provider permission/tool-selection layer applies. The viewer uses the application's authenticated WebSocket proxy, and logging out revokes it. All VNC/MCP sockets bind to loopback.
+
+Prerequisites on Debian: `xvfb openbox x11vnc websockify xauth x11-utils mousepad chromium pcmanfm dbus-x11`, plus the verified driver from `pnpm build:cua:linux`. This installation uses an existing portable Node runtime and the operator's dedicated application installation. After checking that Dotesperia is idle, an administrator runs `sh deploy/dotesperia/install-desktop.sh` from the deployed checkout, then restarts **only** `dotesperia.service`. The script writes local credentials without printing them and keeps operator-owned pre-change configuration copies. Systemd enables both new services at boot, restarts failed sessions, and confines their permissions and resources.
+
+To stop only the graphical desktop: `systemctl disable --now dotesperia-desktop.service dotesperia-desktop-policy.service`. Disabling it does not stop Hermes. The inactive desktop firewall table remains scoped to its own UID. Application file/task/memory tools are already local; additional owner-hosted integrations can be configured later in the MCP panel.
+
+Verification uses disposable homes, synthetic messages and a separate desktop display. Unit/integration checks cover authenticated MCP, forbidden tools, exclusive actions, capability revocation, provider credential exclusion, and nullable native Codex configuration. The live fixture uses Dotesperia's own Codex login to read a synthetic screenshot and then deletes its temporary login copy. Browser checks cover the real bundled viewer and logout revocation. No test messages or memories are added to the live bot.
+
+The removed Boat, Composio, included-service, tunnel, vendor sign-in and connector-proxy clients are inert compatibility contracts. Marketplace remote requests and logos are removed. Cloudflare and Electron legacy sources remain excluded and blocked from the private build; their complete deletion requires resolving the automatic approval review rejection. This is not a claim of proprietary OpenAI Dot equivalence.

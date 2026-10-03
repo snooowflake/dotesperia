@@ -8,7 +8,7 @@ import type { Duplex } from "node:stream";
 import { isSameOrigin, type RequestAuth } from "../request-auth.ts";
 import { PASS, type RouteHandler } from "./table.ts";
 
-const ROUTE = /^\/api\/desktop-viewer\/(local\/(?:shared|bot-[a-f0-9]{64}|pool-\d+)|vps\/[\w-]+)(\/websockify)?$/;
+const ROUTE = /^\/api\/desktop-viewer\/(private\/audit|local\/(?:shared|bot-[a-f0-9]{64}|pool-\d+)|vps\/[\w-]+)(\/websockify)?$/;
 const HANDSHAKE_MS = 10_000;
 const RECHECK_MS = 5_000;
 const WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";

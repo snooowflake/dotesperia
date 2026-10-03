@@ -3,6 +3,7 @@
 // folds one SSE event stream; every provider process runs here.
 // Privacy restrictions load before configuration or provider processes.
 import { BOOT_CLOUD_SECRETS, PRIVACY_POLICY } from "./privacy-boot.ts";
+import { privateDesktopConfig, privateDesktopReady, privateDesktopRpc } from "./private-desktop-config.ts";
 import { blockedPrivateRoute } from "./privacy-policy.ts";
 import { ProactivityManager } from "./proactivity.ts";
 import type { ObjectiveInput, ObjectiveCheckpoint } from "../shared/proactivity.ts";
@@ -613,7 +614,7 @@ import {
 // Keep these two last: a route module may import any server module, and
 // loading the table after everything above leaves module start-up order as is.
 import { json, onJsonBody, parsedBodyOf, readBody } from "./harness/http.ts";
-import { ROUTES, dispatchRoutes } from "./routes/table.ts";
+import { ROUTES, dispatchRoutes, PASS } from "./routes/table.ts";
 import { createHostedSlackRoutes } from "./routes/hosted-slack.ts";
 import { createBotPresetRoutes } from "./routes/bot-presets.ts";
 import { createBotMemoryRoutes } from "./routes/bot-memory.ts";
@@ -2152,6 +2153,7 @@ type InternalCapability = {
   /** The Boat this turn's cloud computer tools act on
    * (/api/internal/computer/mcp); only ever set by the harness at attach. */
   boxId?: string;
+  privateDesktop?: true;
   browserSession?: string;
   roomHandoffId?: string;
   roomCoordination?: boolean;
@@ -3268,7 +3270,19 @@ const routineRequestEnvelopeSchema = z.discriminatedUnion("action", [
 /** The loopback endpoint a bot's computer proxy polls before acting. With a
  * Boat id, the same turn-scoped token also serves that Boat's tools at
  * /api/internal/computer/mcp, and is revoked when the turn ends. */
-function controlIntegration(botId: string, threadId: string, generation: string, localVmTarget?: LocalVmTarget, boxId?: string) {
+function mountPrivateDesktop(custom: NonNullable<NonNullable<SendTurnInput["integrations"]>["custom"]>, botId: string, owner: TurnOwner) {
+  const desktop = privateDesktopConfig();
+  if (!desktop || !custom.private_desktop) return;
+  const spec = custom.private_desktop;
+  if (!("url" in spec) || spec.url !== `${desktop.url}/mcp`) throw new Error("private_desktop is reserved for the operator-owned desktop");
+  const control = controlIntegration(botId, owner.threadId, owner.generation, undefined, undefined, true);
+  custom.private_desktop = {
+    command: process.execPath, args: [SPAWNED_PROXIES.harnessMcp, "computer"],
+    env: { ...AGENTS_NODE_FLAG, OMB_HARNESS_URL: `http://127.0.0.1:${PORT}`, OMB_MCP_TOKEN: control.token },
+  };
+}
+
+function controlIntegration(botId: string, threadId: string, generation: string, localVmTarget?: LocalVmTarget, boxId?: string, privateDesktop = false) {
   return {
     url: `http://127.0.0.1:${PORT}/api/internal/computer-control?botId=${encodeURIComponent(botId)}`,
     token: mintInternalCapability({
@@ -3278,6 +3292,7 @@ function controlIntegration(botId: string, threadId: string, generation: string,
       depth: 0,
       kind: "computer",
       ...(localVmTarget ? { localVmTarget } : {}),
+      ...(privateDesktop ? { privateDesktop: true as const } : {}),
       ...(boxId ? { boxId } : {}),
       ...(teamComputerTurns.get(threadId) ? { teamComputerId: teamComputerTurns.get(threadId)!.computerId } : {}),
       skillAuthoring: false,
@@ -5529,6 +5544,14 @@ function audienceChanged(): void {
 // viewer manager before installing any revocation callbacks.
 const desktopViewer = createDesktopViewer({
   target: (id) => {
+    if (id === "private/audit") {
+      const desktop = privateDesktopConfig();
+      if (!desktop) return;
+      return { key: id, resolve: async () => {
+        if (!await privateDesktopReady(desktop)) throw Object.assign(new Error("Private desktop unavailable"), { status: 409 });
+        return { port: desktop.viewerPort, password: null };
+      } };
+    }
     if (id.startsWith("vps/")) {
       const botId = id.slice(4);
       if (store.bot(botId)?.cloudBackend !== "vps") return;
@@ -9796,6 +9819,7 @@ async function startTurn(
       // never pre-allowed, so every call rides the normal permission flow.
       if (instance.adapter.capabilities.customMcp === true) {
         const custom = await withMcpSignIn(engineMcpServers(bot), mcpOAuth);
+        mountPrivateDesktop(custom, bot.id, resourceOwner);
         if (Object.keys(custom).length) integrations.custom = custom;
       }
       // CLI engines work inside the bot's own workspace directory rather
@@ -12427,6 +12451,7 @@ async function runGroupMemberTurn(
   // user-configured MCP servers: same gating as the 1:1 site above.
   if (instance.adapter.capabilities.customMcp === true) {
     const custom = await withMcpSignIn(engineMcpServers(bot), mcpOAuth);
+    mountPrivateDesktop(custom, bot.id, resourceOwner);
     if (Object.keys(custom).length) integrations.custom = custom;
   }
   // Connected-app discovery is intentionally awaited before a provider owns
@@ -15599,6 +15624,14 @@ ROUTES.push(createAntigravityLeftoverRoutes({
 }));
 
 ROUTES.push(desktopViewer.route);
+ROUTES.push(async ({ path, method, auth, json, res }) => {
+  if (path !== "/api/private-desktop/status") return PASS;
+  if (!auth.scopes.includes("admin")) return json(res, 403, { error: "forbidden" });
+  if (method !== "GET") return json(res, 405, { error: "method not allowed" });
+  const desktop = privateDesktopConfig();
+  const ready = desktop ? await privateDesktopReady(desktop) : false;
+  return json(res, 200, { configured: !!desktop, ready, viewerUrl: ready ? "/desktop-viewer#target=private%2Faudit" : null });
+});
 
 // Live calls (GPT-Live as the voice, the bot as the brain). A client holds
 // the WebRTC audio; the harness creates the session with the key (which
@@ -16420,6 +16453,16 @@ const handleRequest = async (req: IncomingMessage, res: ServerResponse) => {
       // capability names its Boat, and the Boat credential stays here.
       if (method === "POST" && path === "/api/internal/computer/mcp") {
         const body = await readInternalBody();
+        if (internalCapability.privateDesktop) {
+          const config = privateDesktopConfig();
+          if (!config) return json(res, 409, { error: "Private desktop unavailable" });
+          const abort = new AbortController();
+          res.once("close", () => { if (!res.writableEnded) abort.abort(); });
+          return json(res, 200, { result: await privateDesktopRpc(body, {
+            config, signal: abort.signal, assertActive: requireActiveInternalCapability,
+            claim: () => claimTurnResource(internalCapability, "computer:private-desktop"),
+          }) });
+        }
         const boxId = internalCapability.boxId;
         if (!boxId) return json(res, 403, { error: "this turn has no cloud computer" });
         const abort = new AbortController();
