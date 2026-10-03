@@ -4,7 +4,9 @@ La VM doit fournir Node 24+, un compte opérateur non-root, systemd, nftables et
 assez d’espace pour le navigateur et les données. Ne réutiliser aucun home,
 identifiant, volume, profil ou service d’un autre agent.
 
-1. Cloner le fork dans `/opt/dotesperia/repo` sous le compte opérateur.
+1. Cloner la branche `privacy-foundation` du fork dans `/opt/dotesperia/repo`
+   sous le compte opérateur. Tant que la PR n’est pas fusionnée, `main` conserve
+   le code amont et ne contient pas ce profil privé.
 2. Installer le runtime portable vérifié et Codex dans `/opt/dotesperia`,
    toujours sous ce même compte. Installer les dépendances avec les scripts
    automatiques désactivés, puis compiler et lancer les fixtures isolées.
