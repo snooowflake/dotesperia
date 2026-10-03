@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import "../../server/privacy-cli.ts";
 // The sidecar, as one command.
 //
 //   node companion/src/index.ts

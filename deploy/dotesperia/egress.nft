@@ -1,0 +1,15 @@
+# Only this new user's packets are filtered. Existing SSH and other services
+# keep their rules. This table is independent of any pre-existing firewall.
+table inet dotesperia {
+  chain output {
+    type filter hook output priority 10; policy accept;
+    meta skuid "dotesperia" jump agent;
+  }
+  chain agent {
+    ct state established,related accept
+    # Internal gates use ephemeral high ports. Do not let an agent escape its
+    # sandbox through the host's SSH daemon or other existing system services.
+    oifname "lo" tcp dport 10000-65535 accept
+    counter reject with icmpx type admin-prohibited
+  }
+}

@@ -1,0 +1,32 @@
+[Unit]
+Description=Dotesperia private persistent agent
+Requires=dotesperia-egress-policy.service dotesperia-egress.service
+After=network-online.target dotesperia-egress-policy.service dotesperia-egress.service
+
+[Service]
+Type=simple
+User=dotesperia
+Group=dotesperia
+EnvironmentFile=/opt/dotesperia/runtime.env
+WorkingDirectory=/opt/dotesperia/repo
+ExecStart=/opt/dotesperia/node-v24.21.0-linux-x64/bin/node --experimental-strip-types server/index.ts
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=30
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=tmpfs
+BindPaths=/home/dotesperia
+ReadWritePaths=/home/dotesperia
+InaccessiblePaths=-/opt/esperiashield-iphone
+InaccessiblePaths=-/run/dbus/system_bus_socket -/run/systemd/private
+CapabilityBoundingSet=
+RestrictSUIDSGID=true
+RestrictRealtime=true
+MemoryMax=3G
+TasksMax=256
+
+[Install]
+WantedBy=multi-user.target

@@ -5,13 +5,13 @@
 import { useEffect, useRef, useState } from "react";
 import { Archive, CircleUser, Coins, FlaskConical, KeyRound, Monitor, Palette, ScrollText, Search, Sparkles, TabletSmartphone, Terminal, User, Users, X, Building2, Zap, BookOpen } from "lucide-react";
 import { api, useStore, type AppSettingsSection, type ConfigStatus } from "@/state/store";
-import { analyticsEnabled, setAnalyticsEnabled } from "@/lib/analytics";
+
 import { browserAvailable, browserUnavailableReason, builtInBrowserEnabled, routinesInConversationEnabled, showToolCallsEnabled, skillAuthoringEnabled, skillsLibraryEnabled } from "@/lib/feature-flags";
 import { localeChoices, type LocaleKey } from "@/locales";
 import { t } from "@/lib/i18n";
 import { withTourReset } from "@/lib/guided-tour";
 import { completionPatch } from "@/lib/onboarding";
-import { AnthropicEveryClaudeBot, ApiKeyRow, OpenAiCompatUrl, VpsConnection } from "./ApiKeys";
+import { McpServersPanel } from "./McpServersPanel";
 import { DecisionModelSettings } from "./DecisionModelSettings";
 import { useUpdaterState } from "@/lib/updater";
 import { EnginesSettings } from "./EnginesSettings";
@@ -46,7 +46,7 @@ import { AutomaticRecoverySettings } from "./AutomaticRecoverySettings";
 import { ThreadCleanupSettings } from "./ThreadCleanupSettings";
 import { DefaultBotSettings } from "./NewBotDialog";
 import { WorkspaceBackupSettings } from "./WorkspaceBackupSettings";
-import { CompanyBackupSettings } from "./CompanyBackupSettings";
+
 import { cn } from "@/lib/cn";
 import { glassPopupFrameStyle } from "@/lib/glass-popup";
 import { setNotificationSounds, useNotificationSounds } from "@/lib/notification-preferences";
@@ -320,21 +320,8 @@ function NewBotEffortRow() {
   );
 }
 
-function AnalyticsRow() {
-  const [on, setOn] = useState(analyticsEnabled);
-  return (
-    <SettingRow title={t("settings.analytics.title")} subtitle={t("settings.analytics.subtitle")}>
-      <Switch
-        checked={on}
-        aria-label={t("settings.analytics.aria")}
-        onClick={() => {
-          const next = !on;
-          setAnalyticsEnabled(next);
-          setOn(next);
-        }}
-      />
-    </SettingRow>
-  );
+function PrivacyRow() {
+  return <SettingRow title="Confidentialité" subtitle="Télémétrie supprimée. Données stockées sur votre serveur. Le contexte nécessaire aux tâches est transmis à Codex/ChatGPT.">{null}</SettingRow>;
 }
 
 /** Clears the tour's steps and opens it again on the live interface. */
@@ -793,7 +780,7 @@ export function SettingsModal() {
   useEffect(() => window.ogb?.onOpenAppSettings?.(() => setQuery("")), []);
   const q = query.trim().toLowerCase();
   const ownerOrAdmin = useOwnerOrAdmin();
-  const baseSections = SECTIONS.filter((entry) => !remoteActive || entry.id === "companion" || entry.id === "appearance" || entry.id === "desktopWorkspaces")
+  const baseSections = SECTIONS.filter((entry) => !["cloudAccount", "organization", "decisionModel", "people", "workspaces"].includes(entry.id)).filter((entry) => !remoteActive || entry.id === "companion" || entry.id === "appearance" || entry.id === "desktopWorkspaces")
     .filter((entry) => entry.id !== "desktopWorkspaces" || Boolean(window.ogb?.environments))
     .filter((entry) => entry.id !== "organization" || Boolean(window.ogb?.organization))
     // On the person's own Cloud in this app's window, the plan shows read only (cloudPlan);
@@ -913,7 +900,7 @@ export function SettingsModal() {
             <div>
               <LanguageRow />
               <NewBotEffortRow />
-              <AnalyticsRow />
+              <PrivacyRow />
               <DefaultBotSettings />
             </div>
             <Card title={t("settings.roomTurns.title")} subtitle={t("settings.roomTurns.subtitle")}>
@@ -953,57 +940,13 @@ export function SettingsModal() {
       case "experimental":
         return <ExperimentalFeaturesRow />;
       case "connections":
-        return (
-          <Card
-            title={t("settings.connections.title")}
-            subtitle={t("settings.connections.subtitle")}
-          >
-            <div className="flex flex-col gap-4">
-              {state.config?.composio.mode === "managed" ? (
-                <div className="rounded-lg border border-success/25 bg-success/10 px-3 py-2 text-[13px] text-success">
-                  {t("settings.connections.ready")}
-                </div>
-              ) : null}
-              <div className="text-[11.5px] font-medium uppercase tracking-wide text-ink-secondary">{t("keys.providers.title")}</div>
-              <p className="-mt-3 text-[12px] leading-relaxed text-ink-secondary">{t("keys.providers.subtitle")}</p>
-              <ApiKeyRow section="openai" testProvider="openai" />
-              <ApiKeyRow section="anthropic" testProvider="anthropic" />
-              <AnthropicEveryClaudeBot />
-              <ApiKeyRow section="xai" testProvider="xai" />
-              <ApiKeyRow section="openrouter" testProvider="openrouter" />
-              <ApiKeyRow section="mistral" testProvider="mistral" />
-              <ApiKeyRow section="cerebras" testProvider="cerebras" />
-              <details data-api-keys-other className="rounded-lg border border-hairline/40 bg-inset px-3 py-2" open={Boolean(state.config?.openaiCompat?.configured)}>
-                <summary className="cursor-pointer text-[13px] text-ink-secondary">{t("keys.other.title")}</summary>
-                <div className="mt-3 flex flex-col gap-4">
-                  <ApiKeyRow section="openaiCompat" testProvider="openaiCompat" />
-                  <OpenAiCompatUrl />
-                </div>
-              </details>
-              <div className="pt-2 text-[11.5px] font-medium uppercase tracking-wide text-ink-secondary">{t("keys.integrations.title")}</div>
-              <ApiKeyRow section="box" />
-              <VpsConnection />
-              <ApiKeyRow section="opencodeGo" />
-              <p className="-mt-2 text-[11.5px] leading-relaxed text-ink-secondary">
-                {/* {command} marks where the code chip goes, so a translator can move it */}
-                {t("keys.opencode.providersHint").split("{command}").flatMap((part, index) =>
-                  index === 0 ? [part] : [<code key={index} className="font-mono">opencode auth login</code>, part])}
-              </p>
-              <details className="rounded-lg border border-hairline/40 bg-inset px-3 py-2">
-                <summary className="cursor-pointer text-[13px] text-ink-secondary">{t("settings.connections.selfHost")}</summary>
-                <div className="mt-3">
-                  <ApiKeyRow section="composio" />
-                </div>
-              </details>
-            </div>
-          </Card>
-        );
+        return <Card title="Connexions privées" subtitle="Outils locaux ou services hébergés par vous. Les destinations réseau doivent être autorisées par l’administrateur."><McpServersPanel embedded /></Card>;
       case "decisionModel":
         return <DecisionModelSettings />;
       case "engines":
         return <EnginesSettings />;
       case "backups":
-        return <><WorkspaceBackupSettings /><CompanyBackupSettings /></>;
+        return <><WorkspaceBackupSettings /></>;
       case "companion": {
         // "Connect your phone" lands on the one pairing that fits this window:
         // this computer's phone flow, or this server's (or Cloud's) pairing code.

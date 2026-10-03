@@ -16,7 +16,7 @@ import { BotSettingsDialog } from "@/components/BotSettingsDialog";
 import { SIDEBAR_AND_PANEL_FIT, TWO_SIDE_PANELS_FIT, useMediaQuery } from "@/lib/use-media-query";
 import { RemoteAgentSettingsPanel } from "@/components/RemoteAgentSettingsPanel";
 import { NewBotDialog } from "@/components/NewBotDialog";
-import { PluginsPanel, preloadConnectedApps } from "@/components/PluginsPanel";
+import { PrivateAppsPanel as PluginsPanel } from "@/components/PrivateAppsPanel";
 import { TriggersPanel } from "@/components/TriggersPanel";
 import { ComputerPanel } from "@/components/ComputerPanel";
 import { RemoteDesktopPanel } from "@/components/remote-desktop-panel";
@@ -172,14 +172,6 @@ function Shell({ viewer }: { viewer: WelcomeViewer | null }) {
   useEffect(() => {
     window.ogb?.setUnreadCount?.(unreadCount);
   }, [unreadCount]);
-
-  // Warm connected-account state as soon as the local server is available.
-  // The modal then opens with the correct Connect/Add account buttons and
-  // quietly revalidates instead of rediscovering every account from scratch.
-  useEffect(() => {
-    if (!state.connected) return;
-    void preloadConnectedApps().catch(() => {});
-  }, [state.connected]);
 
   // Picking a conversation closes the drawer: on a phone the chat is what you
   // asked for, and leaving the list up would hide it. Watching activeView too

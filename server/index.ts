@@ -1,9 +1,9 @@
 // OpenMausBot server — the harness host. Clients hold no transports
 // (upstream rule): the React app dispatches typed commands over HTTP and
 // folds one SSE event stream; every provider process runs here.
-// First, before any module that could start a process: a Cloud home's
-// secrets off the launcher's pipe (cloud-secrets-boot.ts).
-import { BOOT_CLOUD_SECRETS } from "./cloud-secrets-boot.ts";
+// Privacy restrictions load before configuration or provider processes.
+import { BOOT_CLOUD_SECRETS, PRIVACY_POLICY } from "./privacy-boot.ts";
+import { blockedPrivateRoute } from "./privacy-policy.ts";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { existsSync, readFileSync, realpathSync, rmSync, mkdirSync } from "node:fs";
@@ -15674,6 +15674,11 @@ ROUTES.push(createLiveRoutes({
 
 const toolResults = new ToolResults();
 const handleRequest = async (req: IncomingMessage, res: ServerResponse) => {
+  // Also constrain the user's renderer: server-side network guards alone do
+  // not stop a browser from fetching remote icons, media or connector frames.
+  res.setHeader("Content-Security-Policy", "default-src 'self'; connect-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("X-DNS-Prefetch-Control", "off");
   let url: URL;
   try {
     url = new URL(req.url ?? "/", `http://localhost:${PORT}`);
@@ -15682,6 +15687,8 @@ const handleRequest = async (req: IncomingMessage, res: ServerResponse) => {
   }
   const path = url.pathname;
   const method = req.method ?? "GET";
+  if (blockedPrivateRoute(path)) return json(res, 403, { error: "This hosted capability has been disabled by Dotesperia's privacy policy." });
+  if (path === "/api/privacy" && method === "GET") return json(res, 200, { ...PRIVACY_POLICY.status, ownerOrigins: undefined });
   /** scratch for route matches, shared by every `path.match` below */
   let m: RegExpMatchArray | null = null;
   let releaseWorkspaceRequest: (() => void) | undefined;

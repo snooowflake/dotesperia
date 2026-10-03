@@ -757,7 +757,7 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
       const launchAttempt = async (attempt: number): Promise<void> => {
         const env = childEnv();
         if (planToken) env.OPENMAUSBOT_CHATGPT_TOKEN = planToken;
-        const appServerArgs = ["app-server", ...(plan ? chatgptPlanCodexArgs() : config.managed ? managedCodexArgs(config.managed) : codexLocalProviderArgs(env, turn.model)), ...codexToolSurfaceArgs(),
+        const appServerArgs = ["app-server", "-c", "analytics.enabled=false", "-c", "feedback.enabled=false", "-c", "otel.exporter=\"none\"", "-c", "otel.trace_exporter=\"none\"", "-c", "otel.metrics_exporter=\"none\"", "-c", "otel.log_user_prompt=false", "-c", "web_search=\"disabled\"", ...(plan ? chatgptPlanCodexArgs() : config.managed ? managedCodexArgs(config.managed) : codexLocalProviderArgs(env, turn.model)), ...codexToolSurfaceArgs(),
           // Native snapshots can restore inherited variables after the shell
           // policy has filtered them. Scoped MCP gate settings must stay private.
           ...(turn.toolScope === undefined ? [] : ["-c", "features.shell_snapshot=false"]),

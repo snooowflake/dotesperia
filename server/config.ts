@@ -16,6 +16,8 @@ import type { McpServerSpec } from "./contracts.ts";
 import { isRemoteMcpServer, parseStoredMcpServer } from "./mcp-registry.ts";
 import { parseJson, schemaIssue, type JsonObject, type JsonValue } from "./schema.ts";
 import { CLOUD_SEAT_IDLE_STOP_MS } from "./cloud-overflow.ts";
+import { privateRuntimeEnabled } from "./privacy-runtime.ts";
+import { assertPrivateConfig, privateInstances } from "./privacy-config.ts";
 
 const optionalText = z.string().optional();
 const SSH_ALIAS = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$/;
@@ -751,6 +753,7 @@ export function loadBrowserProfileIdAliases(): ReadonlyMap<string, string> {
 }
 
 export function parseConfigPatch(value: JsonValue): ConfigPatch {
+  if (privateRuntimeEnabled() && value && typeof value === "object") assertPrivateConfig(value);
   const parsed = appConfigPatchSchema.safeParse(value);
   if (!parsed.success) {
     throw Object.assign(new Error(schemaIssue(parsed.error, "Invalid configuration")), { status: 400 });
@@ -989,7 +992,7 @@ export function providerReloadKeys(patch: object): string[] {
 }
 
 // OMB_DATA_DIR isolates test/soak rigs from the user's real fleet.
-export const DATA_DIR = process.env.OMB_DATA_DIR ?? join(homedir(), ".openmausbot");
+export const DATA_DIR = process.env.OMB_DATA_DIR ?? join(homedir(), privateRuntimeEnabled() ? ".dotesperia" : ".openmausbot");
 const LEGACY_DATA_DIR = join(homedir(), ".opengrokbot");
 export const EVENTS_DIR = join(DATA_DIR, "events");
 export const NATIVE_DIR = join(DATA_DIR, "native");
@@ -997,7 +1000,7 @@ export const NATIVE_DIR = join(DATA_DIR, "native");
 export function ensureDirs() {
   // one-time migration from the pre-rename data dir — bots, transcripts,
   // config and keys all carry over
-  if (!existsSync(DATA_DIR) && existsSync(LEGACY_DATA_DIR)) {
+  if (!privateRuntimeEnabled() && !existsSync(DATA_DIR) && existsSync(LEGACY_DATA_DIR)) {
     try {
       renameSync(LEGACY_DATA_DIR, DATA_DIR);
     } catch {
@@ -1120,6 +1123,7 @@ export function loadConfig(): AppConfig {
     if (process.env.OMB_SIGNIN_EMAILS !== undefined) cfg.signIn.admins = splitEmails(process.env.OMB_SIGNIN_EMAILS);
     if (process.env.OMB_SIGNIN_MEMBER_EMAILS !== undefined) cfg.signIn.members = splitEmails(process.env.OMB_SIGNIN_MEMBER_EMAILS);
   }
+  if (privateRuntimeEnabled()) assertPrivateConfig(cfg);
   return cfg;
 }
 
@@ -1304,6 +1308,7 @@ export function saveConfig(
   options: { replaceInstances?: boolean } = {},
 ): void {
   const p = join(DATA_DIR, "config.json");
+  if (privateRuntimeEnabled()) assertPrivateConfig(patch);
   let disk: JsonObject = {};
   try {
     const parsed = jsonObjectSchema.safeParse(parseJson(readFileSync(p, "utf8")));
@@ -1755,7 +1760,7 @@ export function instanceConfigs(cfg: AppConfig): InstanceConfigMap {
       }
     }
   }
-  return map;
+  return privateRuntimeEnabled() ? privateInstances(map, DATA_DIR) : map;
 }
 
 // ── user-configured MCP servers ─────────────────────────────────────────
