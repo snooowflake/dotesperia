@@ -79,7 +79,7 @@ async function main() {
   if (process.getuid?.() === 0) throw new Error("Private desktop must not run as root");
   const executable = process.env.DOTESPERIA_CUA_DRIVER;
   if (!executable?.startsWith("/") || !process.env.DISPLAY || !process.env.HOME) throw new Error("Desktop environment missing");
-  const driver = new StdioMcp({ command: executable, args: ["mcp", "--direct", "--no-overlay"] });
+  const driver = new StdioMcp({ command: executable, args: ["mcp", "--direct", "--no-overlay"], env: { DOTESPERIA_DESKTOP_TOKEN: "" } });
   await driver.init();
   const tools = await driver.listTools();
   if (!tools.some(tool => tool.name === "click") || !tools.some(tool => tool.name === "type_text")) throw new Error("Native desktop tools missing");

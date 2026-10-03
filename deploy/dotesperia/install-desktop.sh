@@ -39,7 +39,7 @@ save(desktop_env, '\n'.join([
     'HTTPS_PROXY=http://127.0.0.1:18081', 'HTTP_PROXY=http://127.0.0.1:18081',
     'ALL_PROXY=http://127.0.0.1:18081', 'NO_PROXY=127.0.0.1,localhost',
     'NODE_USE_ENV_PROXY=1', 'XDG_RUNTIME_DIR=/run/dotesperia-desktop',
-])+'\n', 'mono', 'dotesperia-desktop', 0o640)
+])+'\n', 'mono')
 runtime = base/'runtime.env'
 backup = base/'desktop/runtime.before-desktop.env'
 if not backup.exists(): save(backup, runtime.read_text(), 'mono')

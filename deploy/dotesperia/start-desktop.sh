@@ -1,6 +1,9 @@
 #!/bin/sh
 set -eu
 test "$(id -u)" != 0
+# Graphical applications need no broker credential in their environment.
+desktop_token=$DOTESPERIA_DESKTOP_TOKEN
+unset DOTESPERIA_DESKTOP_TOKEN
 export DISPLAY=${DOTESPERIA_DISPLAY:-:91}
 export XAUTHORITY="$HOME/.Xauthority"
 export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/dotesperia-desktop}
@@ -28,7 +31,7 @@ if command -v mousepad >/dev/null; then
 else
   xterm -title 'DOTesperia — bureau privé' &
 fi
-"${DOTESPERIA_NODE:-/opt/dotesperia/node-v24.21.0-linux-x64/bin/node}" --experimental-strip-types "${DOTESPERIA_DESKTOP_SERVICE:-/opt/dotesperia/repo/server/private-desktop-service.ts}" & mpid=$!
+DOTESPERIA_DESKTOP_TOKEN="$desktop_token" "${DOTESPERIA_NODE:-/opt/dotesperia/node-v24.21.0-linux-x64/bin/node}" --experimental-strip-types "${DOTESPERIA_DESKTOP_SERVICE:-/opt/dotesperia/repo/server/private-desktop-service.ts}" & mpid=$!
 # Losing X11, VNC, the socket bridge or the MCP child restarts the whole
 # private session. systemd reaps remaining children as one cgroup.
 while kill -0 "$xpid" "$opid" "$vpid" "$wpid" "$mpid" 2>/dev/null; do sleep 2; done
