@@ -6119,7 +6119,7 @@ const memoryUpkeep = createMemoryUpkeep({
         // consecutive calls within one upkeep pass.
         assertWithinBudget(cfg, DATA_DIR);
         const threadId = `memory-${randomUUID()}`;
-        return generate(prompt, { ...options, onUsage: (usage) => bookTurnUsage({
+        return generate(prompt, { ...options, model: bot.modelSelection.model, onUsage: (usage) => bookTurnUsage({
           botId: bot.id,
           botName: bot.name,
           threadId,

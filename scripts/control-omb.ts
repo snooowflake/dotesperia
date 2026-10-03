@@ -450,7 +450,10 @@ export async function launchVerificationServer(
       ...(boatFixtureApi ? { computer: { driver: "boxAgent" } } : {}),
       ...(extraProviders.includes("codex") ? { codex: {
         driver: "codex", displayName: "Verification Codex", config: { cli: fileURLToPath(new URL("../server/testing/fake-codex-app-server.ts", import.meta.url)) },
-        ...(room?.scripted ? { environment: { FAKE_CODEX_ROOM_PLAN: join(dataDir, "room-plan.json") } } : {}),
+        environment: {
+          ...Object.fromEntries(Object.entries(parentEnv).filter(([key, value]) => key.startsWith("FAKE_CODEX_") && value)),
+          ...(room?.scripted ? { FAKE_CODEX_ROOM_PLAN: join(dataDir, "room-plan.json") } : {}),
+        },
       } } : {}),
       claude: {
         driver: "claudeAgent",

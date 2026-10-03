@@ -1178,7 +1178,9 @@ process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:m.id,result})+'\\n');});`)
     expect(seen.argv).toContain("features.browser_use=false");
     expect(seen.argv).toContain("features.browser_use_external=false");
     expect(seen.argv).toContain("features.computer_use=false");
-    expect(seen.argv.some((arg: string) => arg.startsWith("web_search="))).toBe(false);
+    // The private fork routes browsing through its controlled browser, and
+    // never exposes native public search alongside it.
+    expect(seen.argv).toContain('web_search="disabled"');
     expect(seen.argv).toContain('plugins={ "browser@openai-bundled" = { enabled = false }, "computer-use@openai-bundled" = { enabled = false }, "unified-computer-use@openai-bundled" = { enabled = false } }');
     expect(seen.argv).toContain('mcp_servers.browser.default_tools_approval_mode="auto"');
     expect(seen.argv.join(" ")).toContain("/tmp/harness-mcp-proxy.js");
