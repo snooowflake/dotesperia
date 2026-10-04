@@ -1,10 +1,8 @@
-import { parseJson } from "./schema.ts";
 import type { ProjectProfile } from "./project-scout.ts";
 
 export const BOT_DIRECTORY_URL = "https://botdirectory.ai";
 export const BOT_DIRECTORY_API_URL = "https://api.botdirectory.ai/api/bots";
 
-const MAX_DIRECTORY_BYTES = 1_000_000;
 const MAX_DIRECTORY_BOTS = 200;
 
 export interface DirectoryBot {
@@ -68,41 +66,10 @@ export function parseBotDirectory(value: unknown): DirectoryBot[] {
   return bots;
 }
 
-/** Read the body in bounded chunks: an oversized or endless response is
- * rejected the moment it crosses the cap, never buffered whole first. */
-async function readBounded(response: Response, maxBytes: number): Promise<string> {
-  const oversized = () => new Error("The bot directory response is too large");
-  const announced = Number(response.headers.get("content-length") ?? 0);
-  if (announced > maxBytes) throw oversized();
-  if (!response.body) {
-    const raw = await response.text();
-    if (Buffer.byteLength(raw) > maxBytes) throw oversized();
-    return raw;
-  }
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    total += value.byteLength;
-    if (total > maxBytes) {
-      await reader.cancel().catch(() => {});
-      throw oversized();
-    }
-    chunks.push(value);
-  }
-  return Buffer.concat(chunks).toString("utf8");
-}
-
-export async function fetchBotDirectory(fetcher: Fetcher = fetch): Promise<DirectoryBot[]> {
-  const response = await fetcher(BOT_DIRECTORY_API_URL, {
-    headers: { accept: "application/json" },
-    redirect: "error",
-    signal: AbortSignal.timeout(10_000),
-  });
-  if (!response.ok) throw new Error(`The bot directory returned HTTP ${response.status}`);
-  return parseBotDirectory(parseJson(await readBounded(response, MAX_DIRECTORY_BYTES)));
+/** Community directory networking has been removed from this fork. */
+export async function fetchBotDirectory(fetcher?: Fetcher): Promise<DirectoryBot[]> {
+  void fetcher;
+  throw Object.assign(new Error("Remote directory removed from the private fork"), { status: 403 });
 }
 
 /** Rank directory bots against a scouted project: overlap between the

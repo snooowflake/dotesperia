@@ -416,7 +416,14 @@ export async function launchVerificationServer(
   extraProviders: Array<"codex"> = [],
   /** Programmatic tests only: an owned loopback Boat provider, never a live account. */
   boatFixtureApi?: string,
+  /** A separately owned desktop fixture; never inherited from the operator environment. */
+  desktopFixture?: { url: string; token: string; viewerPort: number },
 ): Promise<VerificationServer> {
+  if (desktopFixture && (!/^http:\/\/127\.0\.0\.1:[1-9]\d{3,4}$/.test(desktopFixture.url)
+    || !/^[a-f0-9]{64}$/.test(desktopFixture.token) || !Number.isInteger(desktopFixture.viewerPort)
+    || desktopFixture.viewerPort < 10000 || desktopFixture.viewerPort > 65535)) {
+    throw new ControlOmbError("Desktop verification requires owned loopback endpoints and a separate capability");
+  }
   if (boatFixtureApi) {
     if (!/^http:\/\/127\.0\.0\.1:[1-9]\d{0,4}$/.test(boatFixtureApi)) {
       throw new ControlOmbError("Boat verification requires an explicit loopback HTTP provider");
@@ -444,12 +451,17 @@ export async function launchVerificationServer(
   const logPath = join(evidenceDir, `server-${Date.now()}-${process.pid}.log`);
   writeFileSync(join(dataDir, "config.json"), JSON.stringify({
     ...(boatFixtureApi ? { box: { token: "box_verification_fixture" } } : {}),
+    ...(desktopFixture ? { mcpServers: { private_desktop: { type: "http", url: `${desktopFixture.url}/mcp`, headers: { authorization: `Bearer ${desktopFixture.token}` } } } } : {}),
     instances: {
       // The synthetic map omits the default computer engine. Register it
       // only when an owned Boat provider backs this fixture's cloud panel.
       ...(boatFixtureApi ? { computer: { driver: "boxAgent" } } : {}),
       ...(extraProviders.includes("codex") ? { codex: {
         driver: "codex", displayName: "Verification Codex", config: { cli: fileURLToPath(new URL("../server/testing/fake-codex-app-server.ts", import.meta.url)) },
+        environment: {
+          ...Object.fromEntries(Object.entries(parentEnv).filter(([key, value]) => key.startsWith("FAKE_CODEX_") && value)),
+          ...(room?.scripted ? { FAKE_CODEX_ROOM_PLAN: join(dataDir, "room-plan.json") } : {}),
+        },
       } } : {}),
       claude: {
         driver: "claudeAgent",
@@ -476,6 +488,12 @@ export async function launchVerificationServer(
     AGENT_BROWSER_EXECUTABLE_PATH: browser.executablePath,
   });
   if (boatFixtureApi) childEnv.OMB_BOX_API = boatFixtureApi;
+  if (desktopFixture) Object.assign(childEnv, {
+    OMB_STATIC_DIR: join(ROOT, "dist"),
+    DOTESPERIA_DESKTOP_URL: desktopFixture.url,
+    DOTESPERIA_DESKTOP_TOKEN: desktopFixture.token,
+    DOTESPERIA_DESKTOP_VIEWER_PORT: String(desktopFixture.viewerPort),
+  });
   const serverArgs = ["--experimental-strip-types"];
   if (childEnv.OMB_TEST_FAIL_AUDIO_APPEND_ONCE === "1") {
     serverArgs.push("--import", pathToFileURL(join(ROOT, "server", "testing", "fail-audio-append-once.mjs")).href);

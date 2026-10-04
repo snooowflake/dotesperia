@@ -33,6 +33,7 @@ export interface CatalogProfile {
    * of the person's and no Local VM to offer. */
   cloudHome: boolean;
   memoryEnabled?: boolean;
+  proactivity?: boolean;
   /** Written into start_thread's schema in a coordinating turn. */
   botId: string;
 }
@@ -50,6 +51,7 @@ export function catalogProfileFromEnv(env: NodeJS.ProcessEnv): CatalogProfile {
     voiceNotes: env.OMB_VOICE_NOTES === "1",
     cloudHome: env.OMB_CLOUD_HOME === "1",
     memoryEnabled: env.OMB_MEMORY_ENABLED !== "0",
+    proactivity: env.OMB_PROACTIVITY_ENABLED === "1",
     botId: env.OMB_BOT_ID ?? "",
   };
 }
@@ -863,13 +865,35 @@ const CLOUD_HOME_SURFACE = {
 
 /** The tools one turn is shown, exactly as tools/list serializes them. */
 export function availableTools(profile: CatalogProfile) {
-  const tools = catalogTools(profile);
+  const tools = [...catalogTools(profile), ...(profile.proactivity && !profile.externalRuntime ? OBJECTIVE_TOOLS : [])];
   return profile.cloudHome
     ? tools.filter(tool => !LOCAL_VM_TOOL_NAMES.has(tool.name)).map(tool => tool.name === "select_computer"
       ? { ...tool, inputSchema: { ...tool.inputSchema, properties: { surface: CLOUD_HOME_SURFACE } } }
       : tool)
     : tools;
 }
+
+const OBJECTIVE_TOOLS = [
+  {
+    name: "list_objectives",
+    description: "List this bot's operator-authorized persistent objectives, checkpoints, next wakes and limits. This never creates or runs work. Only the operator can create or expand an objective.",
+    annotations: agentToolAnnotations("list_objectives"),
+    inputSchema: { type: "object", additionalProperties: false, properties: {} },
+  },
+  {
+    name: "objective_checkpoint",
+    description: "Record the result and next step of the objective driving THIS running task. sleep schedules a later wake, wait_event waits for its already authorized source, complete ends verified work, need_input stops for a decision or an uncertain action. It grants no permissions and cannot change the objective, bot, tools, event source or daily limit. Call once before finishing an objective run. Never use it for unrelated conversations or create objectives on your own.",
+    inputSchema: {
+      type: "object", additionalProperties: false,
+      properties: {
+        objective_id: { type: "string", description: "Exact authorized objective identifier in this task's instructions." },
+        action: { type: "string", enum: ["sleep", "wait_event", "complete", "need_input"] },
+        summary: { type: "string", minLength: 1, maxLength: 2000, description: "Observed result and information needed at the next wake; omit secrets." },
+        delay_minutes: { type: "integer", minimum: 1, maximum: 10080, description: "For sleep only: whole minutes before continuing, from 1 to 10080." },
+      }, required: ["objective_id", "action", "summary"],
+    },
+  },
+];
 
 function catalogTools(profile: CatalogProfile) {
   const TOOLS = toolDefinitions(profile.externalRuntime);

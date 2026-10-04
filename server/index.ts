@@ -1,9 +1,12 @@
 // OpenMausBot server — the harness host. Clients hold no transports
 // (upstream rule): the React app dispatches typed commands over HTTP and
 // folds one SSE event stream; every provider process runs here.
-// First, before any module that could start a process: a Cloud home's
-// secrets off the launcher's pipe (cloud-secrets-boot.ts).
-import { BOOT_CLOUD_SECRETS } from "./cloud-secrets-boot.ts";
+// Privacy restrictions load before configuration or provider processes.
+import { BOOT_CLOUD_SECRETS, PRIVACY_POLICY } from "./privacy-boot.ts";
+import { privateDesktopConfig, privateDesktopReady, privateDesktopRpc } from "./private-desktop-config.ts";
+import { blockedPrivateRoute } from "./privacy-policy.ts";
+import { ProactivityManager } from "./proactivity.ts";
+import type { ObjectiveInput, ObjectiveCheckpoint } from "../shared/proactivity.ts";
 import { AsyncLocalStorage } from "node:async_hooks";
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from "node:crypto";
 import { existsSync, readFileSync, realpathSync, rmSync, mkdirSync } from "node:fs";
@@ -611,7 +614,7 @@ import {
 // Keep these two last: a route module may import any server module, and
 // loading the table after everything above leaves module start-up order as is.
 import { json, onJsonBody, parsedBodyOf, readBody } from "./harness/http.ts";
-import { ROUTES, dispatchRoutes } from "./routes/table.ts";
+import { ROUTES, dispatchRoutes, PASS } from "./routes/table.ts";
 import { createHostedSlackRoutes } from "./routes/hosted-slack.ts";
 import { createBotPresetRoutes } from "./routes/bot-presets.ts";
 import { createBotMemoryRoutes } from "./routes/bot-memory.ts";
@@ -2150,6 +2153,7 @@ type InternalCapability = {
   /** The Boat this turn's cloud computer tools act on
    * (/api/internal/computer/mcp); only ever set by the harness at attach. */
   boxId?: string;
+  privateDesktop?: true;
   browserSession?: string;
   roomHandoffId?: string;
   roomCoordination?: boolean;
@@ -2401,6 +2405,7 @@ function agentsIntegration(
       OMB_OWN_THREAD_CREATION: ownThreadCreation ? "1" : "0",
       OMB_SKILL_AUTHORING_ENABLED: skillAuthoring ? "1" : "0",
       OMB_MEMORY_ENABLED: store.bot(botId)?.memoryEnabled === false ? "0" : "1",
+      OMB_PROACTIVITY_ENABLED: "1",
       // The shared-computer tools are advertised only while the workspace
       // gate is on; the routes behind them refuse regardless.
       OMB_SHARED_COMPUTERS_ENABLED: lendingEnabled() ? "1" : "0",
@@ -3265,7 +3270,19 @@ const routineRequestEnvelopeSchema = z.discriminatedUnion("action", [
 /** The loopback endpoint a bot's computer proxy polls before acting. With a
  * Boat id, the same turn-scoped token also serves that Boat's tools at
  * /api/internal/computer/mcp, and is revoked when the turn ends. */
-function controlIntegration(botId: string, threadId: string, generation: string, localVmTarget?: LocalVmTarget, boxId?: string) {
+function mountPrivateDesktop(custom: NonNullable<NonNullable<SendTurnInput["integrations"]>["custom"]>, botId: string, owner: TurnOwner) {
+  const desktop = privateDesktopConfig();
+  if (!desktop || !custom.private_desktop) return;
+  const spec = custom.private_desktop;
+  if (!("url" in spec) || spec.url !== `${desktop.url}/mcp`) throw new Error("private_desktop is reserved for the operator-owned desktop");
+  const control = controlIntegration(botId, owner.threadId, owner.generation, undefined, undefined, true);
+  custom.private_desktop = {
+    command: process.execPath, args: [SPAWNED_PROXIES.harnessMcp, "computer"],
+    env: { ...AGENTS_NODE_FLAG, OMB_HARNESS_URL: `http://127.0.0.1:${PORT}`, OMB_MCP_TOKEN: control.token },
+  };
+}
+
+function controlIntegration(botId: string, threadId: string, generation: string, localVmTarget?: LocalVmTarget, boxId?: string, privateDesktop = false) {
   return {
     url: `http://127.0.0.1:${PORT}/api/internal/computer-control?botId=${encodeURIComponent(botId)}`,
     token: mintInternalCapability({
@@ -3275,6 +3292,7 @@ function controlIntegration(botId: string, threadId: string, generation: string,
       depth: 0,
       kind: "computer",
       ...(localVmTarget ? { localVmTarget } : {}),
+      ...(privateDesktop ? { privateDesktop: true as const } : {}),
       ...(boxId ? { boxId } : {}),
       ...(teamComputerTurns.get(threadId) ? { teamComputerId: teamComputerTurns.get(threadId)!.computerId } : {}),
       skillAuthoring: false,
@@ -5526,6 +5544,14 @@ function audienceChanged(): void {
 // viewer manager before installing any revocation callbacks.
 const desktopViewer = createDesktopViewer({
   target: (id) => {
+    if (id === "private/audit") {
+      const desktop = privateDesktopConfig();
+      if (!desktop) return;
+      return { key: id, resolve: async () => {
+        if (!await privateDesktopReady(desktop)) throw Object.assign(new Error("Private desktop unavailable"), { status: 409 });
+        return { port: desktop.viewerPort, password: null };
+      } };
+    }
     if (id.startsWith("vps/")) {
       const botId = id.slice(4);
       if (store.bot(botId)?.cloudBackend !== "vps") return;
@@ -6116,7 +6142,7 @@ const memoryUpkeep = createMemoryUpkeep({
         // consecutive calls within one upkeep pass.
         assertWithinBudget(cfg, DATA_DIR);
         const threadId = `memory-${randomUUID()}`;
-        return generate(prompt, { ...options, onUsage: (usage) => bookTurnUsage({
+        return generate(prompt, { ...options, model: bot.modelSelection.model, onUsage: (usage) => bookTurnUsage({
           botId: bot.id,
           botName: bot.name,
           threadId,
@@ -9793,6 +9819,7 @@ async function startTurn(
       // never pre-allowed, so every call rides the normal permission flow.
       if (instance.adapter.capabilities.customMcp === true) {
         const custom = await withMcpSignIn(engineMcpServers(bot), mcpOAuth);
+        mountPrivateDesktop(custom, bot.id, resourceOwner);
         if (Object.keys(custom).length) integrations.custom = custom;
       }
       // CLI engines work inside the bot's own workspace directory rather
@@ -11097,6 +11124,19 @@ routines = new RoutineManager({
     notify(buildNotification("routine-deferred", notificationBot, routineSourceThread(run) ?? bot.threadId, detail));
   },
 });
+const proactivity = new ProactivityManager({
+  file: join(DATA_DIR, "objectives.json"),
+  workspace: (botId) => store.bot(botId)?.cwd ?? workspaceDir(botId),
+  botExists: (botId) => Boolean(store.bot(botId) && !store.bot(botId)!.hidden),
+  enqueue: (objective, deliveryId, prompt) => routines!.enqueueWebhook({
+    webhookId: `objective:${objective.id}`, webhookName: objective.name, botId: objective.botId,
+    runOn: "maus", deliveryId, prompt, receivedAt: Date.now(),
+  }),
+  receipt: (id, deliveryId) => routines!.webhookRunReceipt(`objective:${id}`, deliveryId),
+  run: (id) => routines!.listRuns().find(run => run.id === id),
+  cancel: (id) => routines!.cancelRun(id),
+});
+
 // A Cloud home is personal (server/cloud-owner.ts): every stored session
 // without admin scope is revoked and what it opened or wrote is nobody's;
 // once (and after a restore) the earlier keys are settled. Before anything
@@ -12411,6 +12451,7 @@ async function runGroupMemberTurn(
   // user-configured MCP servers: same gating as the 1:1 site above.
   if (instance.adapter.capabilities.customMcp === true) {
     const custom = await withMcpSignIn(engineMcpServers(bot), mcpOAuth);
+    mountPrivateDesktop(custom, bot.id, resourceOwner);
     if (Object.keys(custom).length) integrations.custom = custom;
   }
   // Connected-app discovery is intentionally awaited before a provider owns
@@ -15504,8 +15545,8 @@ const workspaceBackupAccess = {
       teamComputers.list().every(computer => !teamComputerInUse(computer)) &&
       store.bots.every((bot) => !botHasActiveTurn(bot.id) && !routines?.activeRunForBot(bot.id) && !botComputerControlSnapshot(bot.id).held) &&
       store.groups.every((group) => !groupIsWorking(group)),
-    pause: () => { routines?.stop(); calendarCalls?.stop(); watchdog.stop(); memoryUpkeep.pause(); },
-    resume: () => { routines?.start(); calendarCalls?.start(); watchdog.start(); memoryUpkeep.resume(); },
+    pause: () => { proactivity.stop(); routines?.stop(); calendarCalls?.stop(); watchdog.stop(); memoryUpkeep.pause(); },
+    resume: () => { routines?.start(); proactivity.start(); calendarCalls?.start(); watchdog.start(); memoryUpkeep.resume(); },
     flush: async () => {
       await Promise.all([flushAllProfileHistory(), flushAllMemoryJournals(), flushUsageLedger(DATA_DIR), flushDecisionLog(DATA_DIR), flushAdminActivity(DATA_DIR)]);
       // With writers gated and work idle, release our WAL connection for the
@@ -15583,6 +15624,14 @@ ROUTES.push(createAntigravityLeftoverRoutes({
 }));
 
 ROUTES.push(desktopViewer.route);
+ROUTES.push(async ({ path, method, auth, json, res }) => {
+  if (path !== "/api/private-desktop/status") return PASS;
+  if (!auth.scopes.includes("admin")) return json(res, 403, { error: "forbidden" });
+  if (method !== "GET") return json(res, 405, { error: "method not allowed" });
+  const desktop = privateDesktopConfig();
+  const ready = desktop ? await privateDesktopReady(desktop) : false;
+  return json(res, 200, { configured: !!desktop, ready, viewerUrl: ready ? "/desktop-viewer#target=private%2Faudit" : null });
+});
 
 // Live calls (GPT-Live as the voice, the bot as the brain). A client holds
 // the WebRTC audio; the harness creates the session with the key (which
@@ -15674,6 +15723,11 @@ ROUTES.push(createLiveRoutes({
 
 const toolResults = new ToolResults();
 const handleRequest = async (req: IncomingMessage, res: ServerResponse) => {
+  // Also constrain the user's renderer: server-side network guards alone do
+  // not stop a browser from fetching remote icons, media or connector frames.
+  res.setHeader("Content-Security-Policy", "default-src 'self'; connect-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' data: blob:; font-src 'self' data:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'");
+  res.setHeader("Referrer-Policy", "no-referrer");
+  res.setHeader("X-DNS-Prefetch-Control", "off");
   let url: URL;
   try {
     url = new URL(req.url ?? "/", `http://localhost:${PORT}`);
@@ -15682,6 +15736,8 @@ const handleRequest = async (req: IncomingMessage, res: ServerResponse) => {
   }
   const path = url.pathname;
   const method = req.method ?? "GET";
+  if (blockedPrivateRoute(path)) return json(res, 403, { error: "This hosted capability has been disabled by Dotesperia's privacy policy." });
+  if (path === "/api/privacy" && method === "GET") return json(res, 200, { ...PRIVACY_POLICY.status, ownerOrigins: undefined });
   /** scratch for route matches, shared by every `path.match` below */
   let m: RegExpMatchArray | null = null;
   let releaseWorkspaceRequest: (() => void) | undefined;
@@ -15919,6 +15975,21 @@ const handleRequest = async (req: IncomingMessage, res: ServerResponse) => {
       onJsonBody(res, (body) => memberBody(body, visible));
     }
     beginAdminAudit(req, res, method, path, auth);
+
+    // Responsibilities are owner-authored. These routes require admin scope;
+    // agent calls use their separate active-turn capability below.
+    if (path === "/api/proactivity" && method === "GET") return json(res, 200, { objectives: proactivity.list() });
+    if (path === "/api/proactivity" && method === "POST") {
+      const objective = proactivity.create(await readBody(req) as ObjectiveInput);
+      return json(res, 201, { objective });
+    }
+    const objectiveAction = path.match(/^\/api\/proactivity\/([\w-]+)\/(pause|resume|run|complete|events)$/);
+    if (objectiveAction && method === "POST") {
+      const [, id, action] = objectiveAction;
+      if (action === "events") return json(res, 202, proactivity.event(id, await readBody(req) as { id: string; name: string; context?: string }));
+      const objective = await proactivity.action(id, action as "pause" | "resume" | "run" | "complete");
+      return json(res, 200, { objective });
+    }
 
     if (method === "POST" && path === "/api/workspace-backup/restore" && teamComputers.list().some(computer => computer.section !== null)) {
       return json(res, 409, { error: "Unassign team computers before restoring a workspace; restored team names must not gain access to existing desktops" });
@@ -16382,6 +16453,16 @@ const handleRequest = async (req: IncomingMessage, res: ServerResponse) => {
       // capability names its Boat, and the Boat credential stays here.
       if (method === "POST" && path === "/api/internal/computer/mcp") {
         const body = await readInternalBody();
+        if (internalCapability.privateDesktop) {
+          const config = privateDesktopConfig();
+          if (!config) return json(res, 409, { error: "Private desktop unavailable" });
+          const abort = new AbortController();
+          res.once("close", () => { if (!res.writableEnded) abort.abort(); });
+          return json(res, 200, { result: await privateDesktopRpc(body, {
+            config, signal: abort.signal, assertActive: requireActiveInternalCapability,
+            claim: () => claimTurnResource(internalCapability, "computer:private-desktop"),
+          }) });
+        }
         const boxId = internalCapability.boxId;
         if (!boxId) return json(res, 403, { error: "this turn has no cloud computer" });
         const abort = new AbortController();
@@ -16656,6 +16737,14 @@ const handleRequest = async (req: IncomingMessage, res: ServerResponse) => {
           });
         }
         return json(res, 200, { rooms: rooms.slice(0, 50), unpostable: unpostable.slice(0, 50) });
+      }
+      if (method === "GET" && path === "/api/internal/objectives") {
+        return json(res, 200, { now: new Date().toISOString(), objectives: proactivity.list(internalSender.id) });
+      }
+      if (method === "POST" && path === "/api/internal/objective-checkpoint") {
+        const body = await readInternalBody();
+        requireActiveInternalCapability();
+        return json(res, 200, { objective: proactivity.checkpoint(internalSender.id, internalCapability.threadId, body as unknown as ObjectiveCheckpoint) });
       }
       if (method === "GET" && path === "/api/internal/routines") {
         const from = internalSender;
@@ -25226,6 +25315,7 @@ server.listen(PORT, "127.0.0.1", () => {
   // ordinary chat. Start only once every registry is initialized and the
   // endpoint is listening; earlier dispatch can hit uninitialized bindings.
   routines!.start();
+  proactivity.start();
   memoryUpkeep.start();
   const leftover = pendingThreads();
   if (leftover.length) console.log(`delegations: ${leftover.length} thread(s) with queued handoffs from a previous run — draining`);
@@ -25277,6 +25367,7 @@ const gracefulShutdown = createGracefulShutdown({
       for (const idle of localVmIdles.values()) idle.cancel();
       vps.closeAllVpsDesktopTunnels();
       watchdog.stop();
+      proactivity.stop();
       routines?.stop();
       calendarCalls?.stop();
       memoryUpkeep.stop();

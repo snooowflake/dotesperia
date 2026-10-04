@@ -1408,7 +1408,7 @@
   "approvalMode.antigravityLocalOnly": "Auto (full access) is available in the local packaged desktop app.",
   "approvalMode.trustedLocalOnly": "Full and Custom are available in the packaged desktop app.",
   "onboarding.welcome": "Welcome to {app}",
-  "onboarding.intro": "Bots that do real work on their own computer. Tell us who you are and we’ll let you know when big things ship.",
+  "onboarding.intro": "Your assistant runs on your server. The name below stays in your installation; there is no mailing list or analytics collection.",
   "onboarding.name": "Your name",
   "onboarding.continue": "Continue",
   "onboarding.profile.error": "Couldn't save your details. Try again, or choose Maybe later.",

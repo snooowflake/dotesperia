@@ -1,0 +1,11 @@
+[Unit]
+Description=Network restriction for the Dotesperia user only
+Before=dotesperia.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/nft -f /opt/dotesperia/repo/deploy/dotesperia/egress.nft
+RemainAfterExit=true
+
+[Install]
+WantedBy=multi-user.target

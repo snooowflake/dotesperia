@@ -191,6 +191,19 @@ describe("CodexDriver turns (fake app-server)", () => {
     }
   });
 
+  it.each([null, undefined, []])("accepts unset native shell exclusions (%s) while shielding MCP credentials", async (exclude) => {
+    const dump = join(scratch, "unset-shell-policy.json"); process.env.FAKE_CODEX_DUMP = dump;
+    await create({ environment: { HOME: scratch, CODEX_HOME: join(scratch, ".codex"),
+      FAKE_CODEX_MCP_OVERRIDES: "1", FAKE_CODEX_SHELL_ENVIRONMENT_POLICY: JSON.stringify({ exclude }) } });
+    const { turnId } = await instance.adapter.sendTurn({ threadId: "unset-exclusions", text: "Fixture",
+      toolScope: { allow: ["native:*"] } });
+    const completed = await recorder.until(event => event.type === "turn.completed" && event.turnId === turnId);
+    expect(completed).toMatchObject({ ok: true });
+    const seen = JSON.parse(readFileSync(dump, "utf8"));
+    expect(seen.calls.find((call: { method: string }) => call.method === "thread/start")
+      .params.config["shell_environment_policy.exclude"]).toEqual(["OMB_GATE_CONFIG_*"]);
+  });
+
   it("refuses a scoped prompt when inherited shell snapshots cannot be disabled", async () => {
     const dump = join(scratch, "unsafe-shell-snapshot.json"); process.env.FAKE_CODEX_DUMP = dump;
     await create({ environment: { HOME: scratch, CODEX_HOME: join(scratch, ".codex"),
@@ -206,7 +219,7 @@ describe("CodexDriver turns (fake app-server)", () => {
     expect(seen.calls.some((call: { method: string }) => call.method === "turn/start")).toBe(false);
   });
 
-  it.each([null, false, [], { exclude: null }, { exclude: ["SAFE_*", 42] }])("refuses a scoped prompt with a malformed shell policy %j", async (policy) => {
+  it.each([null, false, [], { exclude: "SECRET_*" }, { exclude: ["SAFE_*", 42] }])("refuses a scoped prompt with a malformed shell policy %j", async (policy) => {
     const dump = join(scratch, "invalid-shell-policy.json"); process.env.FAKE_CODEX_DUMP = dump;
     await create({ environment: { HOME: scratch, CODEX_HOME: join(scratch, ".codex"),
       FAKE_CODEX_MCP_OVERRIDES: "1", FAKE_CODEX_SHELL_ENVIRONMENT_POLICY: JSON.stringify(policy) } });
@@ -1178,7 +1191,9 @@ process.stdout.write(JSON.stringify({jsonrpc:'2.0',id:m.id,result})+'\\n');});`)
     expect(seen.argv).toContain("features.browser_use=false");
     expect(seen.argv).toContain("features.browser_use_external=false");
     expect(seen.argv).toContain("features.computer_use=false");
-    expect(seen.argv.some((arg: string) => arg.startsWith("web_search="))).toBe(false);
+    // The private fork routes browsing through its controlled browser, and
+    // never exposes native public search alongside it.
+    expect(seen.argv).toContain('web_search="disabled"');
     expect(seen.argv).toContain('plugins={ "browser@openai-bundled" = { enabled = false }, "computer-use@openai-bundled" = { enabled = false }, "unified-computer-use@openai-bundled" = { enabled = false } }');
     expect(seen.argv).toContain('mcp_servers.browser.default_tools_approval_mode="auto"');
     expect(seen.argv.join(" ")).toContain("/tmp/harness-mcp-proxy.js");

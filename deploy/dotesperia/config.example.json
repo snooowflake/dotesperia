@@ -1,0 +1,27 @@
+{
+  "instances": {
+    "codex": {
+      "driver": "codex",
+      "displayName": "Codex / ChatGPT",
+      "config": { "cli": "/opt/dotesperia/tooling/node_modules/.bin/codex" }
+    }
+  },
+  "defaultModelSelection": { "instanceId": "codex", "model": "gpt-6-astra", "effort": "high" },
+  "newBotDefaults": {
+    "profile": {
+      "approvalMode": "ask",
+      "cwd": "/home/dotesperia/workspace",
+      "computer": "browser",
+      "browser": true,
+      "composio": false
+    }
+  },
+  "features": {
+    "autoRecall": true,
+    "routinesInConversation": true,
+    "skillsLibrary": true,
+    "cloudOverflow": false,
+    "sharedComputers": false
+  },
+  "threads": { "maxConcurrentPerBot": 1 }
+}

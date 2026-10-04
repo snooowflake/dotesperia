@@ -1,0 +1,13 @@
+# Independent table affecting only the new desktop user.
+destroy table inet dotesperia_desktop
+table inet dotesperia_desktop {
+  chain output {
+    type filter hook output priority 11; policy accept;
+    meta skuid "dotesperia-desktop" jump desktop;
+  }
+  chain desktop {
+    ct state established,related accept
+    oifname "lo" tcp dport { 5905, 18081, 18902, 18903, 19002, 19003 } accept
+    counter reject with icmpx type admin-prohibited
+  }
+}

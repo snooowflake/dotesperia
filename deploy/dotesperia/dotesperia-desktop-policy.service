@@ -1,0 +1,11 @@
+[Unit]
+Description=Dotesperia private desktop network boundary
+Before=dotesperia-desktop.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/sbin/nft -f /opt/dotesperia/repo/deploy/dotesperia/desktop-egress.nft
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

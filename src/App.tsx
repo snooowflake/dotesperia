@@ -16,8 +16,9 @@ import { BotSettingsDialog } from "@/components/BotSettingsDialog";
 import { SIDEBAR_AND_PANEL_FIT, TWO_SIDE_PANELS_FIT, useMediaQuery } from "@/lib/use-media-query";
 import { RemoteAgentSettingsPanel } from "@/components/RemoteAgentSettingsPanel";
 import { NewBotDialog } from "@/components/NewBotDialog";
-import { PluginsPanel, preloadConnectedApps } from "@/components/PluginsPanel";
+import { PrivateAppsPanel as PluginsPanel } from "@/components/PrivateAppsPanel";
 import { TriggersPanel } from "@/components/TriggersPanel";
+import { ProactivityPanel } from "@/components/ProactivityPanel";
 import { ComputerPanel } from "@/components/ComputerPanel";
 import { RemoteDesktopPanel } from "@/components/remote-desktop-panel";
 import { InspectorPanel } from "@/components/InspectorPanel";
@@ -45,6 +46,13 @@ import { phonePairingSettingsAction, takePhonePairingRequest } from "@/lib/phone
 
 function Shell({ viewer }: { viewer: WelcomeViewer | null }) {
   const { state, dispatch } = useStore();
+  const [proactivityOpen, setProactivityOpen] = useState(false);
+  const closeProactivity = useCallback(() => setProactivityOpen(false), []);
+  useEffect(() => {
+    const open = () => setProactivityOpen(true);
+    window.addEventListener("dotesperia:proactivity", open);
+    return () => window.removeEventListener("dotesperia:proactivity", open);
+  }, []);
   const { capabilities } = useDesktopCapabilities();
   const unreadCount =
     state.bots.filter((bot) => !bot.hidden && botShowsUnread(bot)).length +
@@ -172,14 +180,6 @@ function Shell({ viewer }: { viewer: WelcomeViewer | null }) {
   useEffect(() => {
     window.ogb?.setUnreadCount?.(unreadCount);
   }, [unreadCount]);
-
-  // Warm connected-account state as soon as the local server is available.
-  // The modal then opens with the correct Connect/Add account buttons and
-  // quietly revalidates instead of rediscovering every account from scratch.
-  useEffect(() => {
-    if (!state.connected) return;
-    void preloadConnectedApps().catch(() => {});
-  }, [state.connected]);
 
   // Picking a conversation closes the drawer: on a phone the chat is what you
   // asked for, and leaving the list up would hide it. Watching activeView too
@@ -376,6 +376,7 @@ function Shell({ viewer }: { viewer: WelcomeViewer | null }) {
       <CloudSetup viewer={viewer} />
       {state.pluginsOpen && <PluginsPanel />}
       {state.triggersOpen && <TriggersPanel />}
+      {proactivityOpen && <ProactivityPanel onClose={closeProactivity} />}
       {state.newBotOpen && <NewBotDialog />}
       {state.shortcutsOpen && (
         <KeyboardShortcutsModal

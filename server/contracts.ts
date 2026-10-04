@@ -531,6 +531,8 @@ export interface TextGenerationUsage {
 export interface TextGenerationOptions {
   signal?: AbortSignal;
   onUsage?: (usage: TextGenerationUsage) => void;
+  /** Use the bot's selected model for background memory work. */
+  model?: string;
 }
 
 export interface ProviderInstance {

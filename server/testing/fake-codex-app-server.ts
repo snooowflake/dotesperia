@@ -338,6 +338,7 @@ process.stdin.on("data", (chunk) => {
         }
         break;
       case "config/read":
+        dump();
         if (mode === "config-read-error") {
           dump();
           out({ jsonrpc: "2.0", id: msg.id, error: { code: -32000, message: "config unavailable" } });
@@ -446,6 +447,32 @@ process.stdin.on("data", (chunk) => {
       case "turn/start": {
         dump();
         nativeThreadId = msg.params?.threadId ?? nativeThreadId;
+        // Isolated text helpers share the native protocol but have no tools.
+        if (msg.params?.environments?.length === 0 &&
+          (process.env.FAKE_CODEX_TEXT_MODE || process.env.FAKE_CODEX_TEXT_ROUTES)) {
+          out({ jsonrpc: "2.0", id: msg.id, result: { turn: { id: nativeTurnId } } });
+          if (process.env.FAKE_CODEX_TEXT_MODE === "hang") break;
+          if (process.env.FAKE_CODEX_TEXT_MODE === "approval") {
+            out({ jsonrpc: "2.0", id: 900, method: "item/permissions/requestApproval", params: {} });
+            break;
+          }
+          if (process.env.FAKE_CODEX_TEXT_MODE === "tool") {
+            notify("item/started", { item: { id: "forbidden", type: "commandExecution", command: "forbidden" } });
+            break;
+          }
+          if (process.env.FAKE_CODEX_TEXT_MODE === "foreign") {
+            notify("item/completed", { threadId: "foreign", turnId: "foreign", item: { type: "agentMessage", text: "FOREIGN" } });
+            notify("turn/completed", { threadId: "foreign", turnId: "foreign", turn: { status: "completed" } });
+          }
+          const prompt = (msg.params.input ?? []).map((part: any) => part.text ?? "").join("\n");
+          const routes = process.env.FAKE_CODEX_TEXT_ROUTES
+            ? JSON.parse(readFileSync(process.env.FAKE_CODEX_TEXT_ROUTES, "utf8")) : {};
+          const reply = Object.entries(routes).find(([marker]) => prompt.includes(marker))?.[1] ?? "TEXT_HELPER_OK";
+          notify("item/completed", { item: { id: "text", type: "agentMessage", text: String(reply) } });
+          notify("thread/tokenUsage/updated", { tokenUsage: { total: { inputTokens: 7, cachedInputTokens: 4, outputTokens: 3 } } });
+          notify("turn/completed", { turn: { status: "completed" } });
+          break;
+        }
         // crash script for close-path retry tests: die before
         // acknowledging turn/start. The launch count lives in a state
         // FILE for the same reason as the TRANSIENTS script below; it

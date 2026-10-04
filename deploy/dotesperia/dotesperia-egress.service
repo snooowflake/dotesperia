@@ -1,0 +1,21 @@
+[Unit]
+Description=Dotesperia approved egress relay
+After=network-online.target
+
+[Service]
+User=dotesperia-net
+Group=dotesperia-net
+EnvironmentFile=/opt/dotesperia/runtime.env
+WorkingDirectory=/opt/dotesperia/repo
+ExecStart=/opt/dotesperia/node-v24.21.0-linux-x64/bin/node --experimental-strip-types server/privacy-egress-proxy.ts
+Restart=on-failure
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+InaccessiblePaths=-/opt/esperiashield-iphone /home/dotesperia
+CapabilityBoundingSet=
+
+[Install]
+WantedBy=multi-user.target

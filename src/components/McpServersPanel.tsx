@@ -531,7 +531,7 @@ export function McpServersPanel({ embedded = false }: { embedded?: boolean } = {
         </div>
 
         {restricted && policy && <p role="status" className="mt-3 text-[12.5px] leading-relaxed text-ink-secondary">{t("policy.mcpRestricted", { organization: policy.organizationName })}</p>}
-        <ClaudeMcpSwitch />
+        {store.instances.some((instance) => instance.driverKind === "claudeAgent") && <ClaudeMcpSwitch />}
 
         {importOpen && (
           <div className="mt-4 rounded-2xl border border-hairline/60 bg-card p-4 sm:p-5">

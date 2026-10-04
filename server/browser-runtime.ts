@@ -1,5 +1,6 @@
 import { killCliTree, spawnCli } from "./procs.ts";
 import { DEFAULT_BROWSER_RESULT_BUDGET, shapeBrowserToolResult, slimBrowserToolList, stripHarnessOwnedArguments } from "./browser-tool-shape.ts";
+import { privateRuntimeEnabled } from "./privacy-runtime.ts";
 
 export interface BrowserSpawnSpec {
   command: string;
@@ -29,7 +30,14 @@ const HOST_ENV = ["HOME", "USERPROFILE", "APPDATA", "LOCALAPPDATA", "PATH", "Pat
  * Inherit OS plumbing, never the harness's model-provider credentials. */
 export function browserRuntimeEnv(overrides: Record<string, string | undefined>): NodeJS.ProcessEnv {
   const env = Object.fromEntries(HOST_ENV.flatMap((key) => process.env[key] === undefined ? [] : [[key, process.env[key]]]));
-  return { ...env, ...overrides };
+  const result = { ...env, ...overrides };
+  if (privateRuntimeEnabled()) {
+    for (const key of ["HTTPS_PROXY", "HTTP_PROXY", "ALL_PROXY", "NO_PROXY"] as const) {
+      if (process.env[key]) result[key] = process.env[key];
+    }
+    if (process.env.HTTPS_PROXY) result.AGENT_BROWSER_PROXY = process.env.HTTPS_PROXY;
+  }
+  return result;
 }
 
 export class TransportError extends Error {}

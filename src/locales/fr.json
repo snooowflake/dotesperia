@@ -630,7 +630,7 @@
   "task.updated.yesterday": "hier",
   "task.updated.days": "il y a {count} j",
   "onboarding.welcome": "Bienvenue dans {app}",
-  "onboarding.intro": "Des bots qui font du vrai travail sur leur propre ordinateur. Dites-nous qui vous êtes et nous vous préviendrons des nouveautés importantes.",
+  "onboarding.intro": "Ton assistant fonctionne sur ton serveur. Le nom ci-dessous reste dans ton installation ; aucune inscription ni collecte n’est effectuée.",
   "onboarding.name": "Votre nom",
   "onboarding.continue": "Continuer",
   "onboarding.maybeLater": "Plus tard",

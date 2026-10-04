@@ -1,3 +1,4 @@
+import "./privacy-build.mjs";
 import { app, autoUpdater as nativeAutoUpdater, BrowserWindow, Tray, WebContentsView, clipboard, desktopCapturer, dialog, ipcMain, Menu, nativeImage, powerMonitor, powerSaveBlocker, safeStorage, screen, session, shell, systemPreferences, utilityProcess } from "electron";
 import { createRequire } from "node:module";
 import { randomBytes, randomUUID } from "node:crypto";
@@ -11,6 +12,7 @@ import { finishSpeech, startSpeech, stopSpeech } from "./speech.mjs";
 import { openBlankTerminal } from "./terminal-launch.mjs";
 import { pasteMenuItem } from "./paste-menu-item.mjs";
 import { attachUpdaterWindow, startUpdater, registerUpdaterIpc } from "./updater.mjs";
+
 import {
   buildDiagnosticsReport,
   diagnosticsFileName,

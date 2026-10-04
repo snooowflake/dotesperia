@@ -55,6 +55,7 @@ import { codexVersionBehind, readLatestCodexRelease } from "./codex-release.ts";
 import { canUseMcpServer } from "../../shared/tool-scope.ts";
 import { assertToolScopeSupported } from "../../shared/tool-scope-support.ts";
 import { gateServer } from "../mcp-gate-config.ts";
+import { CODEX_PRIVATE_ARGS, createCodexTextGenerator } from "./codex-text.ts";
 
 export { decodeCodexSelection, readCodexModelCatalog, STATIC_CODEX_MODELS } from "./codex-catalog.ts";
 
@@ -668,6 +669,10 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
       environment: childEnv,
       onAuthenticated: refreshModels,
     });
+    // Native ChatGPT login only; never turn a helper into another billing route.
+    const textGenerator = !plan && !config.managed
+      ? createCodexTextGenerator({ cli: config.cli, environment: childEnv, defaultModel: () => models.default })
+      : undefined;
     const listeners = new Set<RuntimeEventListener>();
     interface Turn {
       stop: () => Promise<boolean>;
@@ -757,7 +762,7 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
       const launchAttempt = async (attempt: number): Promise<void> => {
         const env = childEnv();
         if (planToken) env.OPENMAUSBOT_CHATGPT_TOKEN = planToken;
-        const appServerArgs = ["app-server", ...(plan ? chatgptPlanCodexArgs() : config.managed ? managedCodexArgs(config.managed) : codexLocalProviderArgs(env, turn.model)), ...codexToolSurfaceArgs(),
+        const appServerArgs = ["app-server", ...CODEX_PRIVATE_ARGS, ...(plan ? chatgptPlanCodexArgs() : config.managed ? managedCodexArgs(config.managed) : codexLocalProviderArgs(env, turn.model)), ...codexToolSurfaceArgs(),
           // Native snapshots can restore inherited variables after the shell
           // policy has filtered them. Scoped MCP gate settings must stay private.
           ...(turn.toolScope === undefined ? [] : ["-c", "features.shell_snapshot=false"]),
@@ -1589,7 +1594,9 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
             throw new Error("Codex could not confirm its shell environment policy. No prompt was sent.");
           }
           const policy = (rawPolicy ?? {}) as Record<string, unknown>;
-          const excluded = policy.exclude === undefined ? [] : policy.exclude;
+          // Native config/read serializes an unset optional exclusion list as
+          // null. Preserve explicit lists and still reject malformed values.
+          const excluded = policy.exclude == null ? [] : policy.exclude;
           if (!Array.isArray(excluded) || excluded.some(name => typeof name !== "string")) {
             throw new Error("Codex could not confirm its shell environment exclusions. No prompt was sent.");
           }
@@ -1887,6 +1894,7 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
     },
     cancelAuthentication: () => (planAuth ?? authentication).cancel(),
     signOut: async () => {
+      if (textGenerator) await textGenerator.cancelAll();
       if (!planAuth) return authentication.signOut();
       planSigningOut = true;
       planGeneration++;
@@ -1902,6 +1910,7 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
       } finally { planSigningOut = false; }
     },
     snapshot,
+    ...(textGenerator ? { generateText: textGenerator.generateText } : {}),
     adapter: {
       provider: DRIVER_KIND,
       capabilities: {
@@ -1948,6 +1957,7 @@ export const CodexDriver: ProviderDriver<CodexConfig> = {
     dispose: async () => {
       disposed = true;
       planGeneration++;
+      await textGenerator?.dispose();
       await authentication.dispose();
       await planAuth?.dispose();
       await Promise.all([...active.values()].map(({ stop }) => stop()));
